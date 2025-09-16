@@ -34,7 +34,8 @@ app.post("/elevenlabs", async (req, res) => {
       },
       {
         headers: {
-          Authorization: `Bearer pat-na2-dbf877f7-573c-4a6f-b618-7cd1a2269280`,
+          Authorization: `Bearer ${process.env.HUBSPOT_TOKEN}`,
+
           "Content-Type": "application/json"
         }
       }
