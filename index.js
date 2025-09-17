@@ -8,15 +8,40 @@ app.get("/", (req, res) => {
   res.json({ status: "ok", message: "MCP server is live" });
 });
 
-// Debug ElevenLabs webhook
-app.post("/elevenlabs", (req, res) => {
-  console.log("📞 Debug log:", req.body);
+app.post("/elevenlabs", async (req, res) => {
+  console.log("📞 Got request from ElevenLabs:", req.body);
+
+  // Always reply first
   res.json({
     status: "ok",
-    message: "Test route working",
-    received: req.body || "No body"
+    message: "Lead logged & sent to HubSpot",
+    data: req.body
   });
+
+  // Forward to HubSpot
+  try {
+    await axios.post(
+      "https://api.hubapi.com/crm/v3/objects/contacts",
+      {
+        properties: {
+          firstname: req.body.name || "Unknown",
+          phone: req.body.phone || "",
+          email: req.body.email || ""
+        }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.HUBSPOT_TOKEN}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+    console.log("✅ Sent lead to HubSpot");
+  } catch (error) {
+    console.error("❌ HubSpot error:", error.response?.data || error.message);
+  }
 });
+
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
