@@ -19,7 +19,7 @@ app.post("/elevenlabs", async (req, res) => {
     message: "Lead logged & sent to HubSpot",
     data: req.body
   });
-
+console.log("🔑 HubSpot Token (first 10 chars):", process.env.HUBSPOT_TOKEN?.substring(0, 10));
   // Forward to HubSpot
   try {
     await axios.post(
