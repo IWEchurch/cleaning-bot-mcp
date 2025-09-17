@@ -9,16 +9,15 @@ app.get("/", (req, res) => {
   res.json({ status: "ok", message: "MCP server is live" });
 });
 
-// ElevenLabs webhook → Logs + HubSpot
-app.post("/elevenlabs", async (req, res) => {
-  console.log("📞 Got request from ElevenLabs:", req.body);
-
-  // Always respond with JSON (so tests don’t fail)
+app.post("/elevenlabs", (req, res) => {
+  console.log("📞 Debug log:", req.body);
   res.json({
     status: "ok",
-    message: "Lead received",
-    data: req.body
+    message: "Test route working",
+    received: req.body || "No body"
   });
+});
+
 
   // OPTIONAL: forward to HubSpot (enable once endpoint is working)
   /*
