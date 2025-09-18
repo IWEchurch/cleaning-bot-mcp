@@ -4,46 +4,30 @@ import axios from "axios";
 const app = express();
 app.use(express.json());
 
-// ✅ Root test route
+// Root test route
 app.get("/", (req, res) => {
   res.json({ status: "ok", message: "MCP server is live 🚀" });
 });
 
-// ElevenLabs GET endpoint (for MCP tool discovery)
+// ElevenLabs GET endpoint (tool discovery check)
 app.get("/elevenlabs", (req, res) => {
   res.json({
     status: "ok",
-    message: "MCP server is live and ready"
+    message: "MCP server is ready for ElevenLabs"
   });
 });
 
-
-// ✅ ElevenLabs → MCP → HubSpot
+// ElevenLabs POST webhook → Logs + HubSpot + structured response
 app.post("/elevenlabs", async (req, res) => {
   console.log("📞 New request from ElevenLabs:", req.body);
 
-  // Extract fields
   const { name, phone, email, address, cleaningType, preferredDate } = req.body;
 
-  // Respond immediately so ElevenLabs doesn’t timeout
-  res.json({
-    status: "ok",
-    message: "Lead received, syncing to HubSpot...",
-    data: req.body
-  });
-
-  // Backup log
-  console.log("📝 Logging lead:", {
-    name,
-    phone,
-    email,
-    address,
-    cleaningType,
-    preferredDate
-  });
+  // Always log as backup
+  console.log("📝 Logging lead:", { name, phone, email, address, cleaningType, preferredDate });
 
   try {
-    // Send to HubSpot Contacts
+    // Push to HubSpot (create contact)
     await axios.post(
       "https://api.hubapi.com/crm/v3/objects/contacts",
       {
@@ -65,12 +49,32 @@ app.post("/elevenlabs", async (req, res) => {
     );
 
     console.log("✅ Lead synced to HubSpot");
+
+    // Respond to ElevenLabs with structured variables
+    res.json({
+      status: "ok",
+      message: "Lead received and synced to HubSpot",
+      variables: {
+        name: name || "Unknown",
+        phone: phone || "Unknown",
+        email: email || "Unknown",
+        address: address || "Unknown",
+        cleaningType: cleaningType || "Unknown",
+        preferredDate: preferredDate || "Unknown"
+      }
+    });
   } catch (error) {
     console.error("❌ HubSpot sync failed:", error.response?.data || error.message);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to sync lead to HubSpot",
+      error: error.response?.data || error.message
+    });
   }
 });
 
-// ✅ Render sets port automatically
+// Render sets PORT automatically
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 MCP server running on port ${PORT}`);
