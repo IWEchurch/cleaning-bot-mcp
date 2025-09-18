@@ -9,13 +9,13 @@ app.get("/", (req, res) => {
   res.json({ status: "ok", message: "MCP server is live 🚀" });
 });
 
-// ElevenLabs GET endpoint (tool discovery for MCP)
+// MCP discovery (what tools ElevenLabs can use)
 app.get("/elevenlabs", (req, res) => {
   res.json({
     tools: [
       {
         name: "logLead",
-        description: "Capture cleaning service lead details and push them to HubSpot",
+        description: "Capture cleaning service lead details and push to HubSpot",
         input_schema: {
           type: "object",
           properties: {
@@ -33,17 +33,17 @@ app.get("/elevenlabs", (req, res) => {
   });
 });
 
-// ElevenLabs POST webhook → Logs + HubSpot + structured response
+// ElevenLabs calls this when user gives info
 app.post("/elevenlabs", async (req, res) => {
-  console.log("📞 New request from ElevenLabs:", req.body);
+  console.log("📞 Incoming request from ElevenLabs:", req.body);
 
   const { name, phone, email, address, cleaningType, preferredDate } = req.body;
 
-  // Always log for backup
+  // Always log
   console.log("📝 Logging lead:", { name, phone, email, address, cleaningType, preferredDate });
 
   try {
-    // Push to HubSpot (create contact)
+    // Push into HubSpot as contact
     await axios.post(
       "https://api.hubapi.com/crm/v3/objects/contacts",
       {
@@ -66,32 +66,30 @@ app.post("/elevenlabs", async (req, res) => {
 
     console.log("✅ Lead synced to HubSpot");
 
-    // Respond back to ElevenLabs
+    // Respond so ElevenLabs can keep talking to caller
     res.json({
       status: "ok",
-      message: "Lead received and synced to HubSpot",
+      message: "Lead captured and synced to HubSpot",
       variables: {
-        name: name || "Unknown",
-        phone: phone || "Unknown",
-        email: email || "Unknown",
-        address: address || "Unknown",
-        cleaningType: cleaningType || "Unknown",
-        preferredDate: preferredDate || "Unknown"
+        name,
+        phone,
+        email,
+        address,
+        cleaningType,
+        preferredDate
       }
     });
-  } catch (error) {
-    console.error("❌ HubSpot sync failed:", error.response?.data || error.message);
+  } catch (err) {
+    console.error("❌ HubSpot sync failed:", err.response?.data || err.message);
 
     res.status(500).json({
       status: "error",
-      message: "Failed to sync lead to HubSpot",
-      error: error.response?.data || error.message
+      message: "HubSpot sync failed",
+      error: err.response?.data || err.message
     });
   }
 });
 
-// Render sets PORT automatically
+// Render will assign PORT
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 MCP server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 MCP server running on port ${PORT}`));
