@@ -8,7 +8,20 @@ app.use(express.json());
 app.get("/", (req, res) => {
   res.json({ status: "ok", message: "Webhook server live 🚀" });
 });
+app.post("/webhook", async (req, res) => {
+  const incomingSecret = req.headers["x-elevenlabs-signature"];
 
+  if (incomingSecret !== process.env.WEBHOOK_SECRET) {
+    console.warn("❌ Invalid webhook secret");
+    return res.status(401).json({ status: "error", message: "Unauthorized" });
+  }
+
+  console.log("📞 New lead from ElevenLabs:", req.body);
+
+  const { name, phone, email, address, cleaningType, preferredDate } = req.body;
+
+  // ... HubSpot push ...
+});
 // ElevenLabs webhook
 app.post("/webhook", async (req, res) => {
   console.log("📞 New lead from ElevenLabs:", req.body);
