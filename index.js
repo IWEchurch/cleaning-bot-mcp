@@ -13,10 +13,10 @@ app.get("/", (req, res) => {
 app.get("/elevenlabs", (req, res) => {
   res.json({
     status: "ok",
-    message: "ElevenLabs MCP endpoint is ready",
-    tools: ["lead_capture"]
+    message: "MCP server is live and ready"
   });
 });
+
 
 // ✅ ElevenLabs → MCP → HubSpot
 app.post("/elevenlabs", async (req, res) => {
