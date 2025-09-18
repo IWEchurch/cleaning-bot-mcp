@@ -9,11 +9,27 @@ app.get("/", (req, res) => {
   res.json({ status: "ok", message: "MCP server is live 🚀" });
 });
 
-// ElevenLabs GET endpoint (tool discovery check)
+// ElevenLabs GET endpoint (tool discovery for MCP)
 app.get("/elevenlabs", (req, res) => {
   res.json({
-    status: "ok",
-    message: "MCP server is ready for ElevenLabs"
+    tools: [
+      {
+        name: "logLead",
+        description: "Capture cleaning service lead details and push them to HubSpot",
+        input_schema: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            phone: { type: "string" },
+            email: { type: "string" },
+            address: { type: "string" },
+            cleaningType: { type: "string", enum: ["residental", "comercial", "pre-listing", "emergency"] },
+            preferredDate: { type: "string" }
+          },
+          required: ["name", "phone", "email"]
+        }
+      }
+    ]
   });
 });
 
@@ -23,7 +39,7 @@ app.post("/elevenlabs", async (req, res) => {
 
   const { name, phone, email, address, cleaningType, preferredDate } = req.body;
 
-  // Always log as backup
+  // Always log for backup
   console.log("📝 Logging lead:", { name, phone, email, address, cleaningType, preferredDate });
 
   try {
@@ -50,7 +66,7 @@ app.post("/elevenlabs", async (req, res) => {
 
     console.log("✅ Lead synced to HubSpot");
 
-    // Respond to ElevenLabs with structured variables
+    // Respond back to ElevenLabs
     res.json({
       status: "ok",
       message: "Lead received and synced to HubSpot",
