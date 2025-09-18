@@ -1,34 +1,50 @@
 import express from "express";
 import axios from "axios";
 
-
 const app = express();
 app.use(express.json());
 
-// Root test route
+// ✅ Root test route
 app.get("/", (req, res) => {
-  res.json({ status: "ok", message: "MCP server is live" });
+  res.json({ status: "ok", message: "MCP server is live 🚀" });
 });
 
+// ✅ ElevenLabs → MCP → HubSpot
 app.post("/elevenlabs", async (req, res) => {
-  console.log("📞 Got request from ElevenLabs:", req.body);
+  console.log("📞 New request from ElevenLabs:", req.body);
 
-  // Always reply first
+  // Extract fields
+  const { name, phone, email, address, cleaningType, preferredDate } = req.body;
+
+  // Respond immediately so ElevenLabs doesn’t timeout
   res.json({
     status: "ok",
-    message: "Lead logged & sent to HubSpot",
+    message: "Lead received, syncing to HubSpot...",
     data: req.body
   });
-console.log("🔑 HubSpot Token (first 10 chars):", process.env.HUBSPOT_TOKEN?.substring(0, 10));
-  // Forward to HubSpot
+
+  // Backup log
+  console.log("📝 Logging lead:", {
+    name,
+    phone,
+    email,
+    address,
+    cleaningType,
+    preferredDate
+  });
+
   try {
+    // Send to HubSpot Contacts
     await axios.post(
       "https://api.hubapi.com/crm/v3/objects/contacts",
       {
         properties: {
-          firstname: req.body.name || "Unknown",
-          phone: req.body.phone || "",
-          email: req.body.email || ""
+          firstname: name || "Unknown",
+          phone: phone || "",
+          email: email || "",
+          address: address || "",
+          cleaning_type: cleaningType || "",
+          preferred_date: preferredDate || ""
         }
       },
       {
@@ -38,14 +54,15 @@ console.log("🔑 HubSpot Token (first 10 chars):", process.env.HUBSPOT_TOKEN?.s
         }
       }
     );
-    console.log("✅ Sent lead to HubSpot");
+
+    console.log("✅ Lead synced to HubSpot");
   } catch (error) {
-    console.error("❌ HubSpot error:", error.response?.data || error.message);
+    console.error("❌ HubSpot sync failed:", error.response?.data || error.message);
   }
 });
 
-
-const PORT = process.env.PORT || 10000;
+// ✅ Render sets port automatically
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ MCP server running on port ${PORT}`);
+  console.log(`🚀 MCP server running on port ${PORT}`);
 });
