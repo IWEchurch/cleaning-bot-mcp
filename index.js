@@ -1,66 +1,43 @@
 import express from "express";
-import axios from "axios";
+import crypto from "crypto";
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ type: "*/*" })); // allow raw JSON
 
-// Root check
+// 🔑 Grab ElevenLabs secret from environment
+const ELEVEN_SECRET = process.env.ELEVEN_SECRET || "your-secret-from-elevenlabs";
+
+// 🌐 Root test
 app.get("/", (req, res) => {
-  res.json({ status: "ok", message: "Webhook server live 🚀" });
+  res.json({ status: "ok", message: "MCP server is live 🚀" });
 });
-app.post("/webhook", async (req, res) => {
-  const incomingSecret = req.headers["x-elevenlabs-signature"];
 
-  if (incomingSecret !== process.env.WEBHOOK_SECRET) {
-    console.warn("❌ Invalid webhook secret");
-    return res.status(401).json({ status: "error", message: "Unauthorized" });
+// 📡 ElevenLabs webhook with HMAC verification
+app.post("/webhook", (req, res) => {
+  const signature = req.headers["x-elevenlabs-signature"];
+  const payload = JSON.stringify(req.body);
+
+  // Generate expected signature
+  const expectedSignature = crypto
+    .createHmac("sha256", ELEVEN_SECRET)
+    .update(payload)
+    .digest("hex");
+
+  if (signature !== expectedSignature) {
+    console.error("❌ Invalid signature. Ignoring webhook.");
+    return res.status(401).json({ status: "error", message: "Invalid signature" });
   }
 
-  console.log("📞 New lead from ElevenLabs:", req.body);
+  // ✅ Valid webhook
+  console.log("📞 Valid ElevenLabs webhook:", req.body);
 
-  const { name, phone, email, address, cleaningType, preferredDate } = req.body;
-
-  // ... HubSpot push ...
+  res.json({ status: "ok", message: "Webhook received" });
 });
-// ElevenLabs webhook
-app.post("/webhook", async (req, res) => {
-  console.log("📞 New lead from ElevenLabs:", req.body);
 
-  const { name, phone, email, address, cleaningType, preferredDate } = req.body;
-
-  // Backup log
-  console.log("📝 Logging lead:", { name, phone, email, address, cleaningType, preferredDate });
-
-  try {
-    // Push into HubSpot
-    await axios.post(
-      "https://api.hubapi.com/crm/v3/objects/contacts",
-      {
-        properties: {
-          firstname: name || "Unknown",
-          phone: phone || "",
-          email: email || "",
-          address: address || "",
-          cleaning_type: cleaningType || "",
-          preferred_date: preferredDate || ""
-        }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.HUBSPOT_TOKEN}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-
-    console.log("✅ Lead synced to HubSpot");
-
-    // Respond to ElevenLabs
-    res.json({ status: "ok", message: "Lead received & synced to HubSpot" });
-  } catch (err) {
-    console.error("❌ HubSpot sync failed:", err.response?.data || err.message);
-    res.status(500).json({ status: "error", message: "HubSpot sync failed" });
-  }
+// 🚀 Start server
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log(`🚀 MCP server running on port ${PORT}`);
 });
 
 // Render port
