@@ -3,14 +3,12 @@ import crypto from "crypto";
 
 const app = express();
 
-// Middleware to capture raw body for HMAC validation
-app.use(
-  express.json({
-    verify: (req, res, buf) => {
-      req.rawBody = buf.toString();
-    },
-  })
-);
+// Capture raw body for HMAC validation
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 
 // Root check
 app.get("/", (req, res) => {
@@ -18,36 +16,35 @@ app.get("/", (req, res) => {
 });
 
 // Webhook endpoint
-app.post("/webhook", async (req, res) => {
-  const signature = req.headers["x-elevenlabs-signature"];
-  const secret = process.env.ELEVEN_SECRET; // <-- add this in Render environment variables
-
+app.post("/webhook", (req, res) => {
   console.log("📩 Incoming ElevenLabs webhook");
-  console.log("Headers:", req.headers);
-  console.log("Body:", req.body);
 
-  if (!signature) {
-    console.warn("⚠️ No signature header found.");
-    return res.status(401).json({ error: "Missing signature" });
+  const signature = req.headers["x-elevenlabs-signature"];
+  const rawBody = req.rawBody.toString("utf8");
+  const secret = process.env.ELEVEN_SECRET;
+
+  if (!secret) {
+    console.error("❌ ELEVEN_SECRET not set in environment");
+    return res.status(500).send("Server misconfigured");
   }
 
-  // Compute HMAC
   const expected = crypto
     .createHmac("sha256", secret)
-    .update(req.rawBody)
+    .update(rawBody)
     .digest("hex");
 
-  if (expected !== signature) {
-    console.error("❌ Invalid signature");
-    return res.status(401).json({ error: "Invalid signature" });
+  if (signature !== expected) {
+    console.warn("⚠️ Invalid signature");
+    return res.status(401).send("Invalid signature");
   }
 
-  console.log("✅ Signature verified");
-  res.json({ status: "ok", message: "Webhook received", data: req.body });
+  console.log("✅ Verified payload:", req.body);
+
+  // TODO: push to HubSpot here
+  res.json({ status: "ok" });
 });
 
-// Start server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`🚀 Webhook server running on port ${PORT}`);
 });
