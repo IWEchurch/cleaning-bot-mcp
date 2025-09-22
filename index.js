@@ -1,49 +1,84 @@
 import express from "express";
 import crypto from "crypto";
+import axios from "axios";
 
 const app = express();
-app.use(express.json({ type: "*/*" })); // allow all JSON
+app.use(express.json({ verify: rawBodySaver }));
 
-// 🔑 Secret from Render (must match ElevenLabs)
-const ELEVEN_SECRET = process.env.ELEVEN_SECRET || "not-set";
+// Middleware to keep raw body for HMAC validation
+function rawBodySaver(req, res, buf) {
+  req.rawBody = buf.toString();
+}
 
-// 🌐 Root route
-app.get("/", (req, res) => {
-  res.json({ status: "ok", message: "MCP server is live 🚀" });
-});
-
-// 📡 Webhook with full debug logging
-app.post("/webhook", (req, res) => {
-  const signature = req.headers["x-elevenlabs-signature"];
-  const payload = JSON.stringify(req.body);
-
-  const expectedSignature = crypto
-    .createHmac("sha256", ELEVEN_SECRET)
-    .update(payload)
+// 🔐 HMAC validation helper
+function validateHmac(signature, body) {
+  const secret = process.env.ELEVEN_SECRET;
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(body)
     .digest("hex");
+  return signature === expected;
+}
 
-  console.log("🔑 Debug HMAC check:");
-  console.log("   Provided signature:", signature);
-  console.log("   Expected signature:", expectedSignature);
-  console.log("   ELEVEN_SECRET (first 6):", ELEVEN_SECRET.substring(0, 6));
-  console.log("📡 Raw payload:", JSON.stringify(req.body, null, 2));
-
-  if (!signature) {
-    console.warn("⚠️ No signature header found. Allowing for manual test.");
-    return res.json({ status: "ok", message: "Webhook received (no signature)" });
-  }
-
-  if (signature !== expectedSignature) {
-    console.error("❌ Invalid signature. Ignoring webhook.");
-    return res.status(401).json({ status: "error", message: "Invalid signature" });
-  }
-
-  console.log("✅ Valid webhook received!");
-  res.json({ status: "ok", message: "Webhook verified & received" });
+// Root check
+app.get("/", (req, res) => {
+  res.json({ status: "ok", message: "Webhook server live 🚀" });
 });
 
-// 🚀 Start server
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`🚀 MCP server running on port ${PORT}`);
+// Webhook endpoint
+app.post("/webhook", async (req, res) => {
+  const signature = req.headers["x-elevenlabs-signature"];
+  const rawBody = req.rawBody;
+
+  // Validate HMAC
+  if (!validateHmac(signature, rawBody)) {
+    console.error("❌ Invalid HMAC signature");
+    return res.status(401).json({ error: "Invalid signature" });
+  }
+
+  console.log("📞 Valid webhook received:", req.body);
+
+  const { data } = req.body;
+  const lead = {
+    name: data?.caller_name || "Unknown",
+    phone: data?.caller_number || "Unknown",
+    email: data?.caller_email || "Unknown",
+    address: data?.address || "Unknown",
+    cleaningType: data?.cleaningType || "Unknown",
+    preferredDate: data?.preferredDate || "Unknown"
+  };
+
+  // Always log the lead
+  console.log("📝 Logging lead:", lead);
+
+  try {
+    // ✅ Send to HubSpot
+    await axios.post(
+      "https://api.hubapi.com/crm/v3/objects/contacts",
+      { properties: {
+          firstname: lead.name,
+          phone: lead.phone,
+          email: lead.email,
+          address: lead.address,
+          cleaning_type: lead.cleaningType,
+          preferred_date: lead.preferredDate
+        }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.HUBSPOT_TOKEN}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    console.log("✅ Lead synced to HubSpot");
+    res.json({ status: "ok", message: "Lead logged & sent to HubSpot" });
+  } catch (err) {
+    console.error("❌ HubSpot error:", err.response?.data || err.message);
+    res.status(500).json({ error: "Failed to sync to HubSpot" });
+  }
 });
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Webhook server running on port ${PORT}`));
