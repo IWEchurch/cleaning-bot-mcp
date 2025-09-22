@@ -14,16 +14,39 @@ app.use(
   })
 );
 
-// ✅ Normalize cleaning type to match HubSpot options
-function normalizeCleaningType(type) {
-  if (!type) return "Residential"; // fallback
-  type = type.toLowerCase();
+// ✅ Normalize cleaning type
+function normalizeCleaningType(text) {
+  if (!text) return "Residential";
+  text = text.toLowerCase();
 
-  if (type.includes("resi")) return "Residential";
-  if (type.includes("com")) return "Commercial";
-  if (type.includes("pre")) return "Pre-Listing";
+  if (text.includes("resi")) return "Residential";
+  if (text.includes("com")) return "Commercial";
+  if (text.includes("pre")) return "Pre-Listing";
 
-  return "Residential"; // default
+  return "Residential";
+}
+
+// ✅ Extract fields from transcript
+function extractFromTranscript(transcript) {
+  let email = "unknown@example.com";
+  let address = "Unknown";
+
+  if (!Array.isArray(transcript)) return { email, address };
+
+  for (const entry of transcript) {
+    const msg = entry.message?.toLowerCase() || "";
+
+    // Email pattern
+    const emailMatch = msg.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/);
+    if (emailMatch) email = emailMatch[0];
+
+    // Address heuristic
+    if (msg.includes("street") || msg.includes("st") || msg.includes("ave")) {
+      address = entry.message;
+    }
+  }
+
+  return { email, address };
 }
 
 // ✅ Root check
@@ -50,21 +73,24 @@ app.post("/webhook", async (req, res) => {
   const payload = req.body;
   console.log("📦 Payload:", JSON.stringify(payload, null, 2));
 
-  // --- Extract Lead ---
+  // --- Extract details ---
+  const transcript = payload?.data?.transcript || [];
+  const { email, address } = extractFromTranscript(transcript);
+
   const lead = {
     name: payload?.data?.analysis?.call_summary_title || "Unknown Caller",
     phone:
       payload?.data?.conversation_initiation_client_data?.dynamic_variables
         ?.system__caller_id || "Unknown",
-    email: "unknown@example.com", // replace if collected in transcript
-    address: "Unknown", // replace if collected in transcript
+    email,
+    address,
     cleaningType: normalizeCleaningType(
       payload?.data?.analysis?.transcript_summary || ""
     ),
     preferredDate: new Date().toISOString().split("T")[0],
   };
 
-  console.log("📝 Lead:", lead);
+  console.log("📝 Lead extracted:", lead);
 
   // --- Send to HubSpot ---
   try {
