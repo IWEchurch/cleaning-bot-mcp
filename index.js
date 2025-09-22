@@ -30,8 +30,9 @@ function normalizeCleaningType(text) {
 function extractFromTranscript(transcript) {
   let email = "unknown@example.com";
   let address = "Unknown";
+  let preferredDate = new Date().toISOString().split("T")[0]; // default today
 
-  if (!Array.isArray(transcript)) return { email, address };
+  if (!Array.isArray(transcript)) return { email, address, preferredDate };
 
   for (const entry of transcript) {
     const msg = entry.message?.toLowerCase() || "";
@@ -44,9 +45,21 @@ function extractFromTranscript(transcript) {
     if (msg.includes("street") || msg.includes("st") || msg.includes("ave")) {
       address = entry.message;
     }
+
+    // Date pattern (simple catch: December 27th, 2025 → 2025-12-27)
+    const dateMatch = msg.match(
+      /(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(st|nd|rd|th)?,?\s+\d{4}/
+    );
+    if (dateMatch) {
+      try {
+        preferredDate = new Date(dateMatch[0]).toISOString().split("T")[0];
+      } catch (e) {
+        console.warn("⚠️ Failed to parse date:", dateMatch[0]);
+      }
+    }
   }
 
-  return { email, address };
+  return { email, address, preferredDate };
 }
 
 // ✅ Root check
@@ -75,7 +88,7 @@ app.post("/webhook", async (req, res) => {
 
   // --- Extract details ---
   const transcript = payload?.data?.transcript || [];
-  const { email, address } = extractFromTranscript(transcript);
+  const { email, address, preferredDate } = extractFromTranscript(transcript);
 
   const lead = {
     name: payload?.data?.analysis?.call_summary_title || "Unknown Caller",
@@ -87,7 +100,7 @@ app.post("/webhook", async (req, res) => {
     cleaningType: normalizeCleaningType(
       payload?.data?.analysis?.transcript_summary || ""
     ),
-    preferredDate: new Date().toISOString().split("T")[0],
+    preferredDate,
   };
 
   console.log("📝 Lead extracted:", lead);
