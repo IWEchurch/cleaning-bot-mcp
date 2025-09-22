@@ -1,55 +1,74 @@
 import express from "express";
+import bodyParser from "body-parser";
 import crypto from "crypto";
 import axios from "axios";
 
 const app = express();
-app.use(express.json({ verify: (req, res, buf) => (req.rawBody = buf) }));
 
-// Root check
+// Capture raw body for HMAC validation
+app.use(
+  bodyParser.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf.toString();
+    },
+  })
+);
+
+// ✅ Normalize cleaning type to match HubSpot options
+function normalizeCleaningType(type) {
+  if (!type) return "Residential"; // fallback
+  type = type.toLowerCase();
+
+  if (type.includes("resi")) return "Residential";
+  if (type.includes("com")) return "Commercial";
+  if (type.includes("pre")) return "Pre-Listing";
+
+  return "Residential"; // default
+}
+
+// ✅ Root check
 app.get("/", (req, res) => {
   res.json({ status: "ok", message: "Webhook server live 🚀" });
 });
 
-// Webhook endpoint
+// ✅ Webhook endpoint
 app.post("/webhook", async (req, res) => {
   console.log("📩 Incoming ElevenLabs webhook");
 
+  // --- Verify Signature ---
   const signature = req.headers["x-elevenlabs-signature"];
-  const rawBody = req.rawBody;
-  const secret = process.env.ELEVEN_SECRET;
+  const expected = crypto
+    .createHmac("sha256", process.env.ELEVEN_SECRET)
+    .update(req.rawBody)
+    .digest("hex");
 
-  if (!signature || !secret) {
-    console.warn("⚠️ No signature or secret found, skipping validation.");
-  } else {
-    const expected = crypto
-      .createHmac("sha256", secret)
-      .update(rawBody)
-      .digest("hex");
-
-    if (signature !== expected) {
-      console.error("❌ Invalid signature. Ignoring webhook.");
-      return res.status(401).json({ status: "error", message: "Invalid signature" });
-    }
+  if (signature !== expected) {
+    console.warn("⚠️ Invalid signature");
+    return res.status(401).json({ status: "error", message: "Invalid signature" });
   }
 
   const payload = req.body;
-  console.log("📡 Payload:", JSON.stringify(payload, null, 2));
+  console.log("📦 Payload:", JSON.stringify(payload, null, 2));
 
-  // Try to extract user info from ElevenLabs transcript
+  // --- Extract Lead ---
   const lead = {
-    name: payload?.data?.analysis?.transcript_summary || "Unknown Caller",
-    phone: payload?.data?.conversation_initiation_client_data?.dynamic_variables?.system__caller_id || "Unknown",
-    email: "unknown@example.com", // ElevenLabs doesn’t always provide this
-    address: "Unknown",
-    cleaningType: "residental",
-    preferredDate: new Date().toISOString().split("T")[0]
+    name: payload?.data?.analysis?.call_summary_title || "Unknown Caller",
+    phone:
+      payload?.data?.conversation_initiation_client_data?.dynamic_variables
+        ?.system__caller_id || "Unknown",
+    email: "unknown@example.com", // replace if collected in transcript
+    address: "Unknown", // replace if collected in transcript
+    cleaningType: normalizeCleaningType(
+      payload?.data?.analysis?.transcript_summary || ""
+    ),
+    preferredDate: new Date().toISOString().split("T")[0],
   };
 
-  console.log("📝 Logging lead:", lead);
+  console.log("📝 Lead:", lead);
 
-  // Send to HubSpot
+  // --- Send to HubSpot ---
   try {
-    const hubspotRes = await axios.post(
+    const response = await axios.post(
       "https://api.hubapi.com/crm/v3/objects/contacts",
       {
         properties: {
@@ -58,25 +77,29 @@ app.post("/webhook", async (req, res) => {
           phone: lead.phone,
           address: lead.address,
           cleaning_type: lead.cleaningType,
-          preferred_date: lead.preferredDate
-        }
+          preferred_date: lead.preferredDate,
+        },
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.HUBSPOT_TOKEN}`,
-          "Content-Type": "application/json"
-        }
+          Authorization: `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        },
       }
     );
 
-    console.log("✅ Lead synced to HubSpot:", hubspotRes.data);
-    res.json({ status: "ok", message: "Lead pushed to HubSpot", data: hubspotRes.data });
+    console.log("✅ Lead synced to HubSpot:", response.data);
+    res.json({ status: "ok", message: "Lead logged & sent to HubSpot" });
   } catch (err) {
     console.error("❌ HubSpot sync failed:", err.response?.data || err.message);
-    res.status(500).json({ status: "error", message: "HubSpot sync failed" });
+    res
+      .status(500)
+      .json({ status: "error", message: "Failed to sync with HubSpot" });
   }
 });
 
-// Start server
+// ✅ Start server
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`🚀 Webhook server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`🚀 Webhook server running on port ${PORT}`);
+});
