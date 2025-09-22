@@ -2,36 +2,44 @@ import express from "express";
 import crypto from "crypto";
 
 const app = express();
-app.use(express.json({ type: "*/*" })); // allow raw JSON
+app.use(express.json({ type: "*/*" })); // allow all JSON
 
-// 🔑 Grab ElevenLabs secret from environment
-const ELEVEN_SECRET = process.env.ELEVEN_SECRET || "your-secret-from-elevenlabs";
+// 🔑 Secret from Render (must match ElevenLabs)
+const ELEVEN_SECRET = process.env.ELEVEN_SECRET || "not-set";
 
-// 🌐 Root test
+// 🌐 Root route
 app.get("/", (req, res) => {
   res.json({ status: "ok", message: "MCP server is live 🚀" });
 });
 
-// 📡 ElevenLabs webhook with HMAC verification
+// 📡 Webhook with full debug logging
 app.post("/webhook", (req, res) => {
   const signature = req.headers["x-elevenlabs-signature"];
   const payload = JSON.stringify(req.body);
 
-  // Generate expected signature
   const expectedSignature = crypto
     .createHmac("sha256", ELEVEN_SECRET)
     .update(payload)
     .digest("hex");
+
+  console.log("🔑 Debug HMAC check:");
+  console.log("   Provided signature:", signature);
+  console.log("   Expected signature:", expectedSignature);
+  console.log("   ELEVEN_SECRET (first 6):", ELEVEN_SECRET.substring(0, 6));
+  console.log("📡 Raw payload:", JSON.stringify(req.body, null, 2));
+
+  if (!signature) {
+    console.warn("⚠️ No signature header found. Allowing for manual test.");
+    return res.json({ status: "ok", message: "Webhook received (no signature)" });
+  }
 
   if (signature !== expectedSignature) {
     console.error("❌ Invalid signature. Ignoring webhook.");
     return res.status(401).json({ status: "error", message: "Invalid signature" });
   }
 
-  // ✅ Valid webhook
-  console.log("📞 Valid ElevenLabs webhook:", req.body);
-
-  res.json({ status: "ok", message: "Webhook received" });
+  console.log("✅ Valid webhook received!");
+  res.json({ status: "ok", message: "Webhook verified & received" });
 });
 
 // 🚀 Start server
